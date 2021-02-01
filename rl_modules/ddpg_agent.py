@@ -4,7 +4,6 @@ import os.path as osp
 from datetime import datetime
 import numpy as np
 from mpi4py import MPI
-from mpi_utils.mpi_utils import sync_networks, sync_grads
 from rl_modules.replay_buffer import replay_buffer
 from rl_modules.models import actor, critic
 from mpi_utils.normalizer import normalizer
@@ -23,9 +22,6 @@ class ddpg_agent:
         # create the network
         self.actor_network = actor(args, env_params)
         self.critic_network = critic(args, env_params)
-        # sync the networks across the cpus
-        sync_networks(self.actor_network)
-        sync_networks(self.critic_network)
         # build up the target network
         self.actor_target_network = actor(args, env_params)
         self.critic_target_network = critic(args, env_params)
@@ -49,23 +45,22 @@ class ddpg_agent:
         self.o_norm = normalizer(size=env_params['obs'], default_clip_range=self.args.clip_range)
         self.g_norm = normalizer(size=env_params['goal'], default_clip_range=self.args.clip_range)
         # create the dict for store the model
-        if MPI.COMM_WORLD.Get_rank() == 0:
-            if not os.path.exists(self.args.save_dir):
-                os.mkdir(self.args.save_dir)
-            # path to save the model
-            self.model_path = os.path.join(self.args.save_dir, self.args.env_name)
-            if not os.path.exists(self.model_path):
-                os.mkdir(self.model_path)
+        if not os.path.exists(self.args.save_dir):
+            os.mkdir(self.args.save_dir)
+        # path to save the model
+        self.model_path = os.path.join(self.args.save_dir, self.args.env_name)
+        if not os.path.exists(self.model_path):
+            os.mkdir(self.model_path)
 
-            # added
-            log_dir = create_env_folder(args.env_name, args.network_class, test=args.test)
-            save_kwargs(vars(args), log_dir)
-            tabular_log_path = osp.join(log_dir, 'progress.csv')
-            text_log_path = osp.join(log_dir, 'debug.log')
-            logger.add_text_output(text_log_path)
-            logger.add_tabular_output(tabular_log_path)
-            exp_name = f'{args.env_name}'
-            logger.push_prefix("[%s] " % exp_name)
+        # added
+        log_dir = create_env_folder(args.env_name, args.network_class, test=args.test)
+        save_kwargs(vars(args), log_dir)
+        tabular_log_path = osp.join(log_dir, 'progress.csv')
+        text_log_path = osp.join(log_dir, 'debug.log')
+        logger.add_text_output(text_log_path)
+        logger.add_tabular_output(tabular_log_path)
+        exp_name = f'{args.env_name}'
+        logger.push_prefix("[%s] " % exp_name)
 
     def learn(self):
         """
@@ -124,12 +119,11 @@ class ddpg_agent:
                 self._soft_update_target_network(self.critic_target_network, self.critic_network)
             # start to do the evaluation
             success_rate = self._eval_agent()
-            if MPI.COMM_WORLD.Get_rank() == 0:
-                logger.record_tabular('Epoch', epoch)
-                logger.record_tabular('Success Rate', success_rate)
-                logger.dump_tabular(with_prefix=False, with_timestamp=True)
-                torch.save([self.o_norm.mean, self.o_norm.std, self.g_norm.mean, self.g_norm.std, self.actor_network.state_dict()], \
-                            self.model_path + '/model.pt')
+            logger.record_tabular('Epoch', epoch)
+            logger.record_tabular('Success Rate', success_rate)
+            logger.dump_tabular(with_prefix=False, with_timestamp=True)
+            torch.save([self.o_norm.mean, self.o_norm.std, self.g_norm.mean, self.g_norm.std, self.actor_network.state_dict()], \
+                        self.model_path + '/model.pt')
 
     # pre_process the inputs
     def _preproc_inputs(self, obs, g):
@@ -238,12 +232,10 @@ class ddpg_agent:
         # start to update the network
         self.actor_optim.zero_grad()
         actor_loss.backward()
-        sync_grads(self.actor_network)
         self.actor_optim.step()
         # update the critic_network
         self.critic_optim.zero_grad()
         critic_loss.backward()
-        sync_grads(self.critic_network)
         self.critic_optim.step()
 
     # do the evaluation
@@ -267,5 +259,4 @@ class ddpg_agent:
             total_success_rate.append(per_success_rate)
         total_success_rate = np.array(total_success_rate)
         local_success_rate = np.mean(total_success_rate[:, -1])
-        global_success_rate = MPI.COMM_WORLD.allreduce(local_success_rate, op=MPI.SUM)
-        return global_success_rate / MPI.COMM_WORLD.Get_size()
+        return local_success_rate
