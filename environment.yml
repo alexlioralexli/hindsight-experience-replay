@@ -1,0 +1,9 @@
+name: her
+channels: 
+    - defaults
+dependencies:
+    - python=3.7
+    - pip:
+        - mujoco-py==1.50.1.68
+        - torch==1.6.0
+        - gym==0.17.2
