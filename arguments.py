@@ -44,7 +44,7 @@ def get_args():
     parser.add_argument("--sigma", default=1.0, type=float)
     parser.add_argument("--concatenate_fourier", action='store_true')
     parser.add_argument("--train_B", action='store_true')
-    parser.add_argument("--test", action='store_true')
+    parser.add_argument("--test", '-t', action='store_true')
 
     args = parser.parse_args()
 
