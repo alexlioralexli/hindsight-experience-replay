@@ -35,6 +35,17 @@ def get_args():
     parser.add_argument('--cuda', action='store_true', help='if use gpu do the acceleration')
     parser.add_argument('--num-rollouts-per-mpi', type=int, default=2, help='the rollouts per mpi')
 
+    # added
+    parser.add_argument("--network_class", default="MLP", choices=['MLP', 'FourierMLP'])
+    parser.add_argument("--n_hidden", default=3, type=int)
+    parser.add_argument("--hidden_dim", default=256, type=int)
+    parser.add_argument("--first_dim", default=0, type=int)
+    parser.add_argument("--fourier_dim", default=256, type=int)
+    parser.add_argument("--sigma", default=1.0, type=float)
+    parser.add_argument("--concatenate_fourier", action='store_true')
+    parser.add_argument("--train_B", action='store_true')
+    parser.add_argument("--test", action='store_true')
+
     args = parser.parse_args()
 
     return args

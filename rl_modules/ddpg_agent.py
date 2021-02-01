@@ -1,5 +1,6 @@
 import torch
 import os
+import os.path as osp
 from datetime import datetime
 import numpy as np
 from mpi4py import MPI
@@ -8,10 +9,11 @@ from rl_modules.replay_buffer import replay_buffer
 from rl_modules.models import actor, critic
 from mpi_utils.normalizer import normalizer
 from her_modules.her import her_sampler
+from rlkit_logging import logger
+from logging_utils import create_env_folder, save_kwargs
 
 """
-ddpg with HER (MPI-version)
-
+DDPG with HER (MPI-version)
 """
 class ddpg_agent:
     def __init__(self, args, env, env_params):
@@ -19,14 +21,14 @@ class ddpg_agent:
         self.env = env
         self.env_params = env_params
         # create the network
-        self.actor_network = actor(env_params)
-        self.critic_network = critic(env_params)
+        self.actor_network = actor(args, env_params)
+        self.critic_network = critic(args, env_params)
         # sync the networks across the cpus
         sync_networks(self.actor_network)
         sync_networks(self.critic_network)
         # build up the target network
-        self.actor_target_network = actor(env_params)
-        self.critic_target_network = critic(env_params)
+        self.actor_target_network = actor(args, env_params)
+        self.critic_target_network = critic(args, env_params)
         # load the weights into the target networks
         self.actor_target_network.load_state_dict(self.actor_network.state_dict())
         self.critic_target_network.load_state_dict(self.critic_network.state_dict())
@@ -54,6 +56,16 @@ class ddpg_agent:
             self.model_path = os.path.join(self.args.save_dir, self.args.env_name)
             if not os.path.exists(self.model_path):
                 os.mkdir(self.model_path)
+
+            # added
+            log_dir = create_env_folder(args.env_name, args.network_class, test=args.test)
+            save_kwargs(vars(args), log_dir)
+            tabular_log_path = osp.join(log_dir, 'progress.csv')
+            text_log_path = osp.join(log_dir, 'debug.log')
+            logger.add_text_output(text_log_path)
+            logger.add_tabular_output(tabular_log_path)
+            exp_name = f'{args.env_name}'
+            logger.push_prefix("[%s] " % exp_name)
 
     def learn(self):
         """
@@ -113,7 +125,9 @@ class ddpg_agent:
             # start to do the evaluation
             success_rate = self._eval_agent()
             if MPI.COMM_WORLD.Get_rank() == 0:
-                print('[{}] epoch is: {}, eval success rate is: {:.3f}'.format(datetime.now(), epoch, success_rate))
+                logger.record_tabular('Epoch', epoch)
+                logger.record_tabular('Success Rate', success_rate)
+                logger.dump_tabular(with_prefix=False, with_timestamp=True)
                 torch.save([self.o_norm.mean, self.o_norm.std, self.g_norm.mean, self.g_norm.std, self.actor_network.state_dict()], \
                             self.model_path + '/model.pt')
 

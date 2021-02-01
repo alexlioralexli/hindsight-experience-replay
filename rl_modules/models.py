@@ -1,44 +1,64 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from .mlp import MLP, FourierMLP
 
 """
 the input x in both networks should be [o, g], where o is the observation and g is the goal.
-
 """
+
 
 # define the actor network
 class actor(nn.Module):
-    def __init__(self, env_params):
+    def __init__(self, args, env_params):
         super(actor, self).__init__()
         self.max_action = env_params['action_max']
-        self.fc1 = nn.Linear(env_params['obs'] + env_params['goal'], 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 256)
-        self.action_out = nn.Linear(256, env_params['action'])
+        if args.network_class == 'MLP':
+            self.net = MLP(env_params['obs'] + env_params['goal'],
+                           env_params['action'],
+                           n_hidden=args.n_hidden,
+                           hidden_dim=args.hidden_dim,
+                           first_dim=args.first_dim)
+        elif args.network_class == 'FourierMLP':
+            self.net = FourierMLP(env_params['obs'] + env_params['goal'],
+                                  env_params['action'],
+                                  n_hidden=args.n_hidden,
+                                  hidden_dim=args.hidden_dim,
+                                  sigma=args.sigma,
+                                  fourier_dim=args.fourier_dim,
+                                  train_B=args.train_B,
+                                  concatenate_fourier=args.concatenate_fourier)
+        else:
+            raise NotImplementedError
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        actions = self.max_action * torch.tanh(self.action_out(x))
-
+        actions = self.max_action * torch.tanh(self.net(x))
         return actions
 
+
 class critic(nn.Module):
-    def __init__(self, env_params):
+    def __init__(self, args, env_params):
         super(critic, self).__init__()
         self.max_action = env_params['action_max']
-        self.fc1 = nn.Linear(env_params['obs'] + env_params['goal'] + env_params['action'], 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 256)
-        self.q_out = nn.Linear(256, 1)
+        if args.network_class == 'MLP':
+            self.net = MLP(env_params['obs'] + env_params['goal'] + env_params['action'],
+                           1,
+                           n_hidden=args.n_hidden,
+                           hidden_dim=args.hidden_dim,
+                           first_dim=args.first_dim)
+        elif args.network_class == 'FourierMLP':
+            self.net = FourierMLP(env_params['obs'] + env_params['goal'] + env_params['action'],
+                                  1,
+                                  n_hidden=args.n_hidden,
+                                  hidden_dim=args.hidden_dim,
+                                  sigma=args.sigma,
+                                  fourier_dim=args.fourier_dim,
+                                  train_B=args.train_B,
+                                  concatenate_fourier=args.concatenate_fourier)
+        else:
+            raise NotImplementedError
 
     def forward(self, x, actions):
         x = torch.cat([x, actions / self.max_action], dim=1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x))
-        q_value = self.q_out(x)
-
+        q_value = self.net(x)
         return q_value
