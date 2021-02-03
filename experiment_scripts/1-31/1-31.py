@@ -1,5 +1,6 @@
 total = 0
-envs = ['mpirun -np 8 python -u train.py --env-name FetchPush-v1']
+envs = ['mpirun -np 8 python -u train.py --env-name FetchPush-v1 --n-epochs 25',
+        'mpirun -np 8 python -u train.py --env-name FetchSlide-v1 --n-epochs=200']
 
 for env in envs:
     commands = [env]
